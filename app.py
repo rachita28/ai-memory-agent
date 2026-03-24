@@ -1,10 +1,13 @@
 """
 Streamlit Web Interface for AI Agent with Memory
 """
+import os
 import streamlit as st
 from agent_core import AIAgent
-from voice_processor import VoiceProcessor
 import time
+
+# Disable voice features in cloud deployment (no audio hardware)
+IS_CLOUD = os.environ.get('STREAMLIT_SHARING_MODE') == 'streamlit-community'
 
 # Page config
 st.set_page_config(
@@ -34,10 +37,14 @@ with st.sidebar:
     
     st.divider()
     
-    if st.button("🎙️ Toggle Voice Mode"):
+    # Voice toggle (disabled in cloud)
+    if IS_CLOUD:
+        st.info("🔇 Voice mode disabled in cloud deployment")
+    elif st.button("🎙️ Toggle Voice Mode"):
         if st.session_state.voice is None:
             with st.spinner("Loading voice..."):
                 try:
+                    from voice_processor import VoiceProcessor
                     st.session_state.voice = VoiceProcessor(model_size="tiny")
                     st.success("Voice mode ON!")
                 except Exception as e:
@@ -112,8 +119,8 @@ if prompt := st.chat_input("Type your message..."):
     
     st.session_state.messages.append({"role": "assistant", "content": response})
 
-# Voice input section
-if st.session_state.voice:
+# Voice input section (only for local, not cloud)
+if st.session_state.voice and not IS_CLOUD:
     st.divider()
     
     col1, col2 = st.columns([1, 1])
