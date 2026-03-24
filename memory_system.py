@@ -6,22 +6,29 @@ import json
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from langchain_chroma import Chroma
-from langchain_openai import OpenAIEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 import chromadb
 
 class MemorySystem:
     def __init__(self):
-        # Short-term memory: JSON file (instead of Redis)
+        # Short-term memory: JSON file
         self.short_term_file = "short_term_memory.json"
         
-        # Long-term memory: ChromaDB
-        self.embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
+        # Long-term memory: ChromaDB with HuggingFace embeddings (free, no API key)
+        self.embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
         
         # Persistent Chroma client
-        self.chroma_client = chromadb.PersistentClient(
-            path=os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
-        )
+        chroma_path = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
+        
+        try:
+            self.chroma_client = chromadb.PersistentClient(path=chroma_path)
+        except Exception as e:
+            print(f"ChromaDB error: {e}, recreating...")
+            import shutil
+            if os.path.exists(chroma_path):
+                shutil.rmtree(chroma_path)
+            self.chroma_client = chromadb.PersistentClient(path=chroma_path)
         
         # Collections for different memory types
         self.episodic_collection = self.chroma_client.get_or_create_collection(
@@ -45,8 +52,6 @@ class MemorySystem:
             embedding_function=self.embeddings,
         )
 
-    # ============ SHORT-TERM MEMORY (JSON File) ============
-    
     def save_short_term(self, session_id: str, messages: List[BaseMessage]):
         """Save conversation history to JSON file"""
         try:
@@ -58,7 +63,6 @@ class MemorySystem:
         except:
             data = {}
         
-        # Store messages for this session
         data[session_id] = {
             "timestamp": datetime.now().isoformat(),
             "messages": [{"type": m.type, "content": m.content} for m in messages]
@@ -104,8 +108,6 @@ class MemorySystem:
         except:
             pass
 
-    # ============ LONG-TERM MEMORY (ChromaDB) ============
-    
     def store_memory(self, content: str, memory_type: str = "episodic", 
                      metadata: Optional[Dict] = None, user_id: str = "default"):
         """Store long-term memory with embeddings"""
