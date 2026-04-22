@@ -1,10 +1,10 @@
 """
-AI Agent with Ollama (free local model) + memory
+AI Agent with Groq (cloud) + memory
 """
 import os
 from typing import TypedDict, List, Annotated, Sequence
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
-from langchain_ollama import ChatOllama
+from langchain_groq import ChatGroq
 from langgraph.graph import StateGraph, END
 import operator
 from memory_system import MemorySystem
@@ -18,24 +18,21 @@ class AgentState(TypedDict):
 class AIAgent:
     def __init__(self):
         self.memory = MemorySystem()
-        self.llm = ChatOllama(
-            model="llama3.2",
+        self.llm = ChatGroq(
+            model="llama-3.2-3b-preview",
             temperature=0.7,
-            base_url="http://localhost:11434"
+            api_key=os.getenv("GROQ_API_KEY")
         )
         self.graph = self._build_graph()
     
     def _build_graph(self):
         def retrieve_memories(state: AgentState):
-            """Retrieve relevant memories before responding"""
             if not state["messages"]:
                 return {"retrieved_memories": []}
             
             last_message = state["messages"][-1].content.lower()
             
-            # For personal questions, search for name/identity info
             if any(keyword in last_message for keyword in ["name", "who am i", "what is my", "my name"]):
-                # Force retrieve recent memories that contain the name
                 all_memories = self.memory.episodic_collection.get(
                     where={"user_id": state["user_id"]}
                 )
@@ -46,7 +43,6 @@ class AIAgent:
                             relevant.append(doc)
                 return {"retrieved_memories": relevant[:3]}
             
-            # Normal semantic search for other queries
             memories = self.memory.retrieve_relevant_memories(
                 query=state["messages"][-1].content,
                 user_id=state["user_id"],
@@ -55,7 +51,6 @@ class AIAgent:
             return {"retrieved_memories": memories}
         
         def generate_response(state: AgentState):
-            """Generate AI response with context"""
             memories = state.get("retrieved_memories", [])
             memory_context = ""
             if memories:
@@ -71,7 +66,6 @@ If you see memory information, use it to answer questions accurately.
             messages = [SystemMessage(content=system_prompt)] + list(state["messages"])
             response = self.llm.invoke(messages)
             
-            # Store interaction in long-term memory
             if len(state["messages"]) >= 2:
                 conversation_summary = f"User: {state['messages'][-2].content}\nAssistant: {response.content}"
                 self.memory.store_memory(
@@ -83,7 +77,6 @@ If you see memory information, use it to answer questions accurately.
             return {"messages": [response]}
         
         def save_short_term(state: AgentState):
-            """Persist to short-term memory"""
             self.memory.save_short_term(state["session_id"], list(state["messages"]))
             return {}
         
