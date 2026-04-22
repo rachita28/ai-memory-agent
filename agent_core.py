@@ -19,7 +19,7 @@ class AIAgent:
     def __init__(self):
         self.memory = MemorySystem()
         self.llm = ChatGroq(
-            model="llama3-8b-8192",
+            model="llama-3.1-8b-instant",
             temperature=0.7,
             api_key=os.getenv("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")
         )
