@@ -18,17 +18,12 @@ class MemorySystem:
         # Long-term memory: ChromaDB with HuggingFace embeddings (free, no API key)
         self.embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
         
-        # Persistent Chroma client
-        chroma_path = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
-        
+        # Use in-memory Chroma for cloud deployment (reliable, resets each session)
+        # For local persistence, change to: chromadb.PersistentClient(path="./chroma_db")
         try:
-            self.chroma_client = chromadb.PersistentClient(path=chroma_path)
-        except Exception as e:
-            print(f"ChromaDB error: {e}, recreating...")
-            import shutil
-            if os.path.exists(chroma_path):
-                shutil.rmtree(chroma_path)
-            self.chroma_client = chromadb.PersistentClient(path=chroma_path)
+            self.chroma_client = chromadb.PersistentClient(path="./chroma_db")
+        except:
+            self.chroma_client = chromadb.Client()  # Fallback to in-memory
         
         # Collections for different memory types
         self.episodic_collection = self.chroma_client.get_or_create_collection(
@@ -111,20 +106,24 @@ class MemorySystem:
     def store_memory(self, content: str, memory_type: str = "episodic", 
                      metadata: Optional[Dict] = None, user_id: str = "default"):
         """Store long-term memory with embeddings"""
-        collection = self.episodic_collection if memory_type == "episodic" else self.semantic_collection
-        memory_id = f"{user_id}_{datetime.now().isoformat()}"
-        
-        collection.add(
-            documents=[content],
-            metadatas=[{
-                "user_id": user_id,
-                "type": memory_type,
-                "timestamp": datetime.now().isoformat(),
-                **(metadata or {})
-            }],
-            ids=[memory_id]
-        )
-        return memory_id
+        try:
+            collection = self.episodic_collection if memory_type == "episodic" else self.semantic_collection
+            memory_id = f"{user_id}_{datetime.now().isoformat()}"
+            
+            collection.add(
+                documents=[content],
+                metadatas=[{
+                    "user_id": user_id,
+                    "type": memory_type,
+                    "timestamp": datetime.now().isoformat(),
+                    **(metadata or {})
+                }],
+                ids=[memory_id]
+            )
+            return memory_id
+        except Exception as e:
+            print(f"Memory storage error: {e}")
+            return None
     
     def retrieve_relevant_memories(self, query: str, user_id: str = "default", k: int = 5) -> List[str]:
         """Retrieve relevant memories using semantic search"""
